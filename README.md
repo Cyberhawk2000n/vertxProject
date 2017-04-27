@@ -1,2 +1,2 @@
-# Verticle optimisation project
-Uses Java and io.vertx for parallel optimization
+# Verticle optimization project
+Java and io.vertx framework for parallel optimization
