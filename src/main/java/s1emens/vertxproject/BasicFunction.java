@@ -8,12 +8,25 @@ package s1emens.vertxproject;
 /**
  *
  * @author Cyberhawk
- * calculate a value of basic function y = 0,18*x + 150
+ * class contains static methods to calculate a values of functions
  */
 public class BasicFunction {
     
+    /*
+    * ideal function y = 150 + 0,18 * x
+    */
     public static double calculate(double x) {
-        return 0.18*x + 150;
+        return 150 + 0.18 * x;
     }
     
+    /*
+    * function with parameters y = theta0 + theta1 * x
+    */
+    public static double calculateExample(double[] theta, double x) throws NullPointerException, IllegalArgumentException {
+        if (theta == null)
+            throw new NullPointerException();
+        if (theta.length != 2)
+            throw new IllegalArgumentException();
+        return theta[0] + theta[1] * x;
+    }
 }
