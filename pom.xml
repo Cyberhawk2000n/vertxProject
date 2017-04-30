@@ -9,15 +9,14 @@
 
   <build>
     <plugins>
-      <plugin>
-        <artifactId>maven-compiler-plugin</artifactId>
-        <version>3.3</version>
-        <configuration>
-          <source>1.8</source>
-          <target>1.8</target>
-        </configuration>
-      </plugin>
-        
+        <plugin>
+            <artifactId>maven-compiler-plugin</artifactId>
+            <version>3.3</version>
+            <configuration>
+                <source>1.8</source>
+                <target>1.8</target>
+            </configuration>
+        </plugin>
     </plugins>
   </build>
   
@@ -25,7 +24,18 @@
     <dependency>
       <groupId>io.vertx</groupId>
       <artifactId>vertx-core</artifactId>
-      <version>3.0.0</version>
+      <version>3.4.1</version>
+    </dependency>
+    <dependency>
+      <groupId>io.vertx</groupId>
+      <artifactId>vertx-sync</artifactId>
+      <version>3.4.1</version>
+    </dependency>
+    <dependency>
+      <groupId>co.paralleluniverse</groupId>
+      <artifactId>quasar-core</artifactId>
+      <version>0.7.7</version>
+      <classifier>jdk8</classifier>
     </dependency>
   </dependencies>
 

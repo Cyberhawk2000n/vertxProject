@@ -9,31 +9,31 @@ import io.vertx.core.AbstractVerticle;
 import io.vertx.core.buffer.Buffer;
 import io.vertx.core.logging.Logger;
 import io.vertx.core.logging.LoggerFactory;
+import io.vertx.core.shareddata.LocalMap;
 /**
  *
  * @author Cyberhawk
  */
 public class Slave extends AbstractVerticle {
-    private Logger log = LoggerFactory.getLogger(Slave.class);
+    private final Logger log = LoggerFactory.getLogger(Slave.class);
     
     @Override
     public void start() {
         vertx.eventBus().consumer("slave", message -> {
-            double x = (double) vertx.sharedData().getLocalMap("sharedMap").get("x0");
-            double y = (double) vertx.sharedData().getLocalMap("sharedMap").get("y0");
-            log.info(x + ": " + y);
-            /*Buffer requestBuffer = (Buffer)message.body();
-            int size = requestBuffer.getInt(0);
-            double[] theta = new double[2];
-            theta[0] = requestBuffer.getDouble(size*8+4);
-            theta[1] = requestBuffer.getDouble(size*8+8);
             double[] gradient = new double[2];
             gradient[0] = 0;
             gradient[1] = 0;
+            // gradients for theta0 and theta1 (all points)
+            LocalMap<String, Object> sharedMap =
+                    vertx.sharedData().getLocalMap("sharedMap");
+            double[] theta = new double[2];
+            theta[0] = (double) sharedMap.get("theta0");
+            theta[1] = (double) sharedMap.get("theta1");
+            int size = (int) sharedMap.get("size");
             for (int i = 0; i < size; i++)
             {
-                double x = requestBuffer.getDouble(i*8+4);
-                double y = requestBuffer.getDouble(i*8+8);
+                double x = (double) sharedMap.get("x" + i);
+                double y = (double) sharedMap.get("y" + i);
                 double tmp = y - BasicFunction.calculateExample(theta, x);
                 gradient[0] += tmp;
                 gradient[1] += tmp * x;
@@ -41,8 +41,14 @@ public class Slave extends AbstractVerticle {
             Buffer buffer = Buffer.buffer();
             buffer.appendDouble(gradient[0]);
             buffer.appendDouble(gradient[1]);
-            log.info("Finished!\n");
-            message.reply(buffer);*/
+            //log.info(gradient[0] + ": " + gradient[1]);
+            vertx.eventBus().send("master", buffer);
         });
     }
+    
+    @Override
+    public void stop() {
+        log.info("Slave stopped!");
+    }
+    
 }

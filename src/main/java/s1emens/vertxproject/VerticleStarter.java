@@ -5,7 +5,9 @@
  */
 package s1emens.vertxproject;
 
+import io.vertx.core.DeploymentOptions;
 import io.vertx.core.Vertx;
+import io.vertx.core.VertxOptions;
 
 /**
  *
@@ -13,8 +15,10 @@ import io.vertx.core.Vertx;
  */
 public class VerticleStarter {
     public static void main(String[] args) {
+        VertxOptions  opt = new VertxOptions();
         Vertx vertx = Vertx.vertx();
+        DeploymentOptions options = new DeploymentOptions().setWorker(true);
         Master master = new Master();
-        vertx.deployVerticle(master); //deploy Master-verticle
+        vertx.deployVerticle(master, options); //deploy Master-verticle
     }
 }
