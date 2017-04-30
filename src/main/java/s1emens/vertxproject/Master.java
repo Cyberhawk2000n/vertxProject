@@ -42,68 +42,73 @@ public class Master extends AbstractVerticle {
     
     @Override
     public void start() throws Exception {
-        // count of slave-verticles (depends on count of points)
-        countOfSlaveVerticles = 10;
-        for (int i = 0; i < countOfSlaveVerticles; i++)
-            vertx.deployVerticle(new Slave());
         SharedData sharedData = vertx.sharedData();
-        sharedMap = sharedData.getLocalMap("sharedMap");
-        sharedMap.put("slaves", countOfSlaveVerticles);
         
-        vertx.eventBus().consumer("master", message -> {
-            double haveAccuracy; //it is used to compare results of function
-            //calculate theta0 and theta1 until have requirement accuracy
-            // save old values theta0 and theta1
-            if (receivedResponces == 0) {
-                sharedMap.put("theta0", newTheta[0]);
-                sharedMap.put("theta1", newTheta[1]);
-                gradient[0] = 0;
-                gradient[1] = 0;
+        if (PARALLEL == false)
+            sharedMap = sharedData.getLocalMap("sharedMap");
+        else {
+            // count of slave-verticles (depends on count of points)
+            countOfSlaveVerticles = 4;
+            for (int i = 0; i < countOfSlaveVerticles; i++) {
+                sharedData.getLocalMap("sharedMap" + i);
+                vertx.deployVerticle(new Slave());
             }
-            // sum for gradients (from slave-verticles)
-            Buffer buffer = (Buffer)message.body();
-            gradient[0] += buffer.getDouble(0);
-            gradient[1] += buffer.getDouble(8);
-            receivedResponces++;
-            //log.info(gradient[0] + ": " + gradient[1]);
-            if (countOfSlaveVerticles == receivedResponces) {
-                double[] theta = new double[2];
-                theta[0] = newTheta[0];
-                theta[1] = newTheta[1];
-                newTheta[0] = theta[0] + alfa[0] * gradient[0] / NUM_OF_POINTS;
-                newTheta[1] = theta[1] + alfa[1] * gradient[1] / NUM_OF_POINTS;
-                log.info(newTheta[0] + ": " + newTheta[1]);
-                try {
-                    double reduceStep =
-                        BasicFunction.calculateExample(theta, X_EXAMPLE) -
-                        BasicFunction.calculateExample(newTheta, X_EXAMPLE);
-                    haveAccuracy = Math.abs(reduceStep);
-                    if (reduceStep > 0) {
-                        alfa[0] /= 2;
-                        alfa[1] /= 2;
+            
+            //message handler for distributed computing
+            vertx.eventBus().consumer("master", message -> {
+                double haveAccuracy; //it is used to compare results of function
+                //calculate theta0 and theta1 until have requirement accuracy
+                // save old values theta0 and theta1
+                // sum for gradients (from slave-verticles)
+                Buffer buffer = (Buffer)message.body();
+                gradient[0] += buffer.getDouble(0);
+                gradient[1] += buffer.getDouble(8);
+                receivedResponces++;
+                //log.info(gradient[0] + ": " + gradient[1] + "\n");
+                if (countOfSlaveVerticles == receivedResponces) {
+                    double[] theta = new double[2];
+                    theta[0] = newTheta[0];
+                    theta[1] = newTheta[1];
+                    newTheta[0] = theta[0] + alfa[0] * gradient[0] / NUM_OF_POINTS;
+                    newTheta[1] = theta[1] + alfa[1] * gradient[1] / NUM_OF_POINTS;
+                    //log.info(newTheta[0] + ": " + newTheta[1]);
+                    try {
+                        double reduceStep =
+                            BasicFunction.calculateExample(theta, X_EXAMPLE) -
+                            BasicFunction.calculateExample(newTheta, X_EXAMPLE);
+                        haveAccuracy = Math.abs(reduceStep);
+                        if (reduceStep > 0) {
+                            alfa[0] /= 2;
+                            alfa[1] /= 2;
+                        }
+                        if (haveAccuracy > ACCURACY) {
+                            receivedResponces = 0;
+                            gradient[0] = 0;
+                            gradient[1] = 0;
+                            for (int i = 0; i < countOfSlaveVerticles; i++) {
+                                LocalMap<String, Object> map =
+                                    sharedData.getLocalMap("sharedMap" + i);
+                                map.put("theta0", newTheta[0]);
+                                map.put("theta1", newTheta[1]);
+                                vertx.eventBus().send("slave", i);
+                            }
+                        }
+                        else {
+                            finish = LocalTime.now();
+                            long time = ChronoUnit.MILLIS.between(start, finish);
+                            log.info(
+                                String.format("(Time %d ms): y = %.4f * x + %.4f%n",
+                                time, newTheta[1], newTheta[0]));
+                            vertx.close();
+                        }
                     }
-                    if (haveAccuracy > ACCURACY) {
-                        sharedMap.put("theta0", newTheta[0]);
-                        sharedMap.put("theta1", newTheta[1]);
-                        receivedResponces = 0;
-                        vertx.eventBus().publish("slave", "continue");
-                    }
-                    else {
-                        finish = LocalTime.now();
-                        long time = ChronoUnit.MILLIS.between(start, finish);
-                        log.info(
-                            String.format("(Time %d ms): y = %.4f * x + %.4f%n",
-                            time, newTheta[0], newTheta[1]));
+                    catch (Exception ex) {
+                        log.error(ex);
                         vertx.close();
                     }
                 }
-                catch (Exception ex) {
-                    log.error(ex);
-                    vertx.close();
-                }
-            }
-        });
-        
+            });
+        }
         //main calculation
         vertx.setTimer(1, res -> {
             // create input data, 1000000 example points
@@ -135,7 +140,8 @@ public class Master extends AbstractVerticle {
                 }
                 finish = LocalTime.now();
                 long time = ChronoUnit.MILLIS.between(start, finish);
-                log.info(String.format("(Time %d ms): y = %.4f * x + %.4f%n", time, results[0], results[1]));
+                log.info(String.format("(Time %d ms): y = %.4f * x + %.4f%n",
+                        time, results[1], results[0]));
                 vertx.close();
             }
         });
@@ -198,9 +204,16 @@ public class Master extends AbstractVerticle {
         newTheta[0] = ASSUMED_THETA0;
         newTheta[1] = ASSUMED_THETA1;
         gradient = new double[2];
+        gradient[0] = 0;
+        gradient[1] = 0;
         receivedResponces = 0;
-        for (int i = 0; i < countOfSlaveVerticles; i++)
+        for (int i = 0; i < countOfSlaveVerticles; i++) {
+            LocalMap<String, Object> map =
+                vertx.sharedData().getLocalMap("sharedMap" + i);
+            map.put("theta0", newTheta[0]);
+            map.put("theta1", newTheta[1]);
             vertx.eventBus().send("slave", i);
+        }
         // start parallel gradient descent
         // following actions of master-verticle are in the message handler
         // waiting for messages from slave-verticles
@@ -236,18 +249,35 @@ public class Master extends AbstractVerticle {
     * calculates points for input data size
     * uses random to change real values
     */
-    private void calculatePoints(int size) {
+    private void calculatePoints(int count) {
         // check if size is incorrect
-        if (size < 1)
+        if (count < 1)
             return;
-        sharedMap.put("size", size);
         Random random = new Random();
-        for (int i = 0; i < size; i++) {
-            double x = random.nextDouble()*5000;
-            // calculate y(x) and change it to not ideal value of function
-            double y = BasicFunction.calculate(x) + 100*(random.nextDouble() - 0.5);
-            sharedMap.put("x" + i, x);
-            sharedMap.put("y" + i, y);
+        if (PARALLEL == false) {
+            sharedMap.put("count", count);
+            for (int i = 0; i < count; i++) {
+                double x = random.nextDouble()*5000;
+                // calculate y(x) and change it to not ideal value of function
+                double y = BasicFunction.calculate(x) + 100*(random.nextDouble() - 0.5);
+                sharedMap.put("x" + i, x);
+                sharedMap.put("y" + i, y);
+            }
+        }
+        else {
+            for (int i = 0; i < countOfSlaveVerticles; i++) {
+                LocalMap<String, Object> map =
+                    vertx.sharedData().getLocalMap("sharedMap" + i);
+                int slavePointCount = count / countOfSlaveVerticles;
+                map.put("count", slavePointCount);
+                for (int j = 0; j < slavePointCount; j++) {
+                    double x = random.nextDouble()*5000;
+                    // calculate y(x) and change it to not ideal value of function
+                    double y = BasicFunction.calculate(x) + 100*(random.nextDouble() - 0.5);
+                    map.put("x" + j, x);
+                    map.put("y" + j, y);
+                }
+            }
         }
     }
     

@@ -24,16 +24,18 @@ public class Slave extends AbstractVerticle {
             gradient[0] = 0;
             gradient[1] = 0;
             // gradients for theta0 and theta1 (all points)
-            LocalMap<String, Object> sharedMap =
-                    vertx.sharedData().getLocalMap("sharedMap");
+            int slaveNumber = (int) message.body();
+            LocalMap<String, Object> map =
+                    vertx.sharedData().getLocalMap("sharedMap" + slaveNumber);
             double[] theta = new double[2];
-            theta[0] = (double) sharedMap.get("theta0");
-            theta[1] = (double) sharedMap.get("theta1");
-            int size = (int) sharedMap.get("size");
-            for (int i = 0; i < size; i++)
+            theta[0] = (double) map.get("theta0");
+            theta[1] = (double) map.get("theta1");
+            int countOfPoints = (int) map.get("count");
+            //log.info("Slave #" + slaveNumber + ": " + countOfPoints);
+            for (int i = 0; i < countOfPoints; i++)
             {
-                double x = (double) sharedMap.get("x" + i);
-                double y = (double) sharedMap.get("y" + i);
+                double x = (double) map.get("x" + i);
+                double y = (double) map.get("y" + i);
                 double tmp = y - BasicFunction.calculateExample(theta, x);
                 gradient[0] += tmp;
                 gradient[1] += tmp * x;

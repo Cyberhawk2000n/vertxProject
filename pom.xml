@@ -26,17 +26,6 @@
       <artifactId>vertx-core</artifactId>
       <version>3.4.1</version>
     </dependency>
-    <dependency>
-      <groupId>io.vertx</groupId>
-      <artifactId>vertx-sync</artifactId>
-      <version>3.4.1</version>
-    </dependency>
-    <dependency>
-      <groupId>co.paralleluniverse</groupId>
-      <artifactId>quasar-core</artifactId>
-      <version>0.7.7</version>
-      <classifier>jdk8</classifier>
-    </dependency>
   </dependencies>
 
 </project>
