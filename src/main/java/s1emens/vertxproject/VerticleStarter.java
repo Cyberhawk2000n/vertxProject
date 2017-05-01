@@ -18,6 +18,7 @@ public class VerticleStarter {
     private static final Logger LOG = LoggerFactory.getLogger(Master.class);
     public static void main(String[] args) {
         int countOfSlaveVerticles = -1;
+        // Check key -c if there is count of slave-verticles
         if (args != null && args.length > 1) {
             int position = -1;
             for (int i = 0; i < (args.length - 1); i++) {
@@ -39,6 +40,10 @@ public class VerticleStarter {
         }
         Vertx vertx = Vertx.vertx();
         Master master;
+        /* If count of slave-verticles is incorrect -> just run master-verticle
+        * Otherwise run master-verticle with specified count
+        * of slave-verticles
+        */
         if (countOfSlaveVerticles < 1 || countOfSlaveVerticles > 128)
             master = new Master();
         else

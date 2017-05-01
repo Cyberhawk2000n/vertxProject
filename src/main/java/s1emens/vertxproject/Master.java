@@ -19,18 +19,18 @@ import java.util.Random;
 /**
  *
  * @author Cyberhawk
- * master-verticle for main computation
+ * Master-verticle for main computation
  */
 public class Master extends AbstractVerticle {
     private final Logger log = LoggerFactory.getLogger(Master.class);
     private static final int NUM_OF_POINTS = 1000000;
-    private static final double ACCURACY = 1e-4; // required accuracy to stop
-    // example value for comparison function results
-    private static final double X_EXAMPLE = 1000;
-    private static final double ASSUMED_THETA0 = 1; // real value is 150
-    private static final double ASSUMED_THETA1 = -50; // real value is 0,18
-    private static final double ALFA_0 = 1e-2; // step of algorithm for theta0
-    private static final double ALFA_1 = 1e-6; // step of algorithm for theta1
+    private static final double ACCURACY = 1.0e-4; // required accuracy to stop
+    // Example value for comparison function results
+    private static final double X_EXAMPLE = 1000.0;
+    private static final double ASSUMED_THETA0 = 1.0; // real value is 150
+    private static final double ASSUMED_THETA1 = -50.0; // real value is 0,18
+    private static final double ALFA_0 = 1.0e-2; // step of algorithm for theta0
+    private static final double ALFA_1 = 1.0e-6; // step of algorithm for theta1
     private boolean parallel;
     private LocalMap<String, Object> sharedMap;
     private int receivedResponces;
@@ -52,6 +52,7 @@ public class Master extends AbstractVerticle {
     @Override
     public void start() throws Exception {
         SharedData sharedData = vertx.sharedData();
+        // Check key -c if there is count of slave-verticles
         if (countOfSlaveVerticles == -1) {
             List<String> args = this.processArgs();
             if (args != null && !args.isEmpty()) {
@@ -74,6 +75,10 @@ public class Master extends AbstractVerticle {
                 }
             }
         }
+        /* If count of slave-verticles is incorrect -> just run master-verticle
+        * Otherwise run master-verticle with specified count
+        * of slave-verticles
+        */
         if (countOfSlaveVerticles < 1 || countOfSlaveVerticles > 128)
             parallel = false;
         else
@@ -81,12 +86,12 @@ public class Master extends AbstractVerticle {
         if (parallel == false)
             sharedMap = sharedData.getLocalMap("sharedMap");
         else {
-            // count of slave-verticles (depends on count of points)
+            // Deploy specified count of slave-verticles
             for (int i = 0; i < countOfSlaveVerticles; i++) {
                 sharedData.getLocalMap("sharedMap" + i);
                 vertx.deployVerticle(new Slave());
             }
-            //message handler for distributed computing
+            //Message handler for distributed computing
             vertx.eventBus().consumer("master", message -> {
                 double haveAccuracy; //it is used to compare results of function
                 //calculate theta0 and theta1 until have requirement accuracy
@@ -96,14 +101,16 @@ public class Master extends AbstractVerticle {
                 gradient[0] += buffer.getDouble(0);
                 gradient[1] += buffer.getDouble(8);
                 receivedResponces++;
-                //log.info(gradient[0] + ": " + gradient[1] + "\n");
+                // If have answer messages from all slave-verticles ->
+                // Calculate new values of theta0 and theta1
                 if (countOfSlaveVerticles == receivedResponces) {
                     double[] theta = new double[2];
                     theta[0] = newTheta[0];
                     theta[1] = newTheta[1];
-                    newTheta[0] = theta[0] + alfa[0] * gradient[0] / NUM_OF_POINTS;
-                    newTheta[1] = theta[1] + alfa[1] * gradient[1] / NUM_OF_POINTS;
-                    //log.info(newTheta[0] + ": " + newTheta[1]);
+                    newTheta[0] =
+                            theta[0] + alfa[0] * gradient[0] / NUM_OF_POINTS;
+                    newTheta[1] =
+                            theta[1] + alfa[1] * gradient[1] / NUM_OF_POINTS;
                     try {
                         double reduceStep =
                             BasicFunction.calculateExample(theta, X_EXAMPLE) -
@@ -113,6 +120,8 @@ public class Master extends AbstractVerticle {
                             alfa[0] /= 2;
                             alfa[1] /= 2;
                         }
+                        // If have accuracy is more than required one ->
+                        // continue, otherwise finish and show the result
                         if (haveAccuracy > ACCURACY) {
                             receivedResponces = 0;
                             gradient[0] = 0;
@@ -141,11 +150,22 @@ public class Master extends AbstractVerticle {
                 }
             });
         }
-        //main calculation
+        //Main section (initializing and running algorithm)
         vertx.setTimer(1, res -> {
-            // create input data, 1000000 example points
-            calculatePoints(NUM_OF_POINTS);
-            // check used time for computation
+            // Create input data, 1000000 example points
+            try {
+                int result = calculatePoints(sharedData, NUM_OF_POINTS, parallel,
+                    countOfSlaveVerticles);
+                if (result != 0) {
+                    log.error("Wrong count of points or verticles!");
+                    vertx.close();
+                }
+            }
+            catch (Exception ex) {
+                log.error(ex);
+                vertx.close();
+            }
+            // Check used time for computation
             start = LocalTime.now();
             if (parallel == true)
                 parallelGradientDescent();
@@ -180,12 +200,12 @@ public class Master extends AbstractVerticle {
     }
     
     /*
-    * calculates points for input data size
-    * uses random to change real values
+    * Calculates gradient descent
+    * Master-verticle calculates this section in case non-parallel algorithm
     */
     private double[] gradientDescent() {
-        // initialize alfa, theta0 and theta1 ( y = theta0 + theta1 * x )
-        // alfa can change during algorithm
+        // Initialize alfa, theta0 and theta1 ( y = theta0 + theta1 * x )
+        // Alfa can change during algorithm
         alfa = new double[2];
         alfa[0] = ALFA_0;
         alfa[1] = ALFA_1;
@@ -193,13 +213,13 @@ public class Master extends AbstractVerticle {
         newTheta[0] = ASSUMED_THETA0;
         newTheta[1] = ASSUMED_THETA1;
         double[] theta = new double[2];
-        double haveAccuracy; //it is used to compare results of function
-        //calculate theta0 and theta1 until have requirement accuracy
+        double haveAccuracy; //It is used to compare results of function
+        //Calculate theta0 and theta1 until have requirement accuracy
         do {
-            // save old values theta0 and theta1
+            // Save old values theta0 and theta1
             theta[0] = newTheta[0];
             theta[1] = newTheta[1];
-            // gradients for theta0 and theta1 (all points)
+            // Gradients for theta0 and theta1 (all points)
             double[] gradient = calculateGradient(theta);
             newTheta[0] = theta[0] + alfa[0] * gradient[0] / NUM_OF_POINTS;
             newTheta[1] = theta[1] + alfa[1] * gradient[1] / NUM_OF_POINTS;
@@ -222,13 +242,13 @@ public class Master extends AbstractVerticle {
     }
     
     /*
-    * prepares global data for message handler
-    * sends first set of messages for slave-verticles
+    * Prepares global data for message handler
+    * Sends first set of messages for slave-verticles
     */
     private void parallelGradientDescent() {
-        // initialize alfa, theta0 and theta1 ( y = theta0 + theta1 * x )
-        // alfa can change during algorithm
-        // global variables for using in message handler
+        // Initialize alfa, theta0 and theta1 ( y = theta0 + theta1 * x )
+        // Alfa can change during algorithm
+        // Global variables for using in message handler
         alfa = new double[2];
         alfa[0] = ALFA_0;
         alfa[1] = ALFA_1;
@@ -246,15 +266,15 @@ public class Master extends AbstractVerticle {
             map.put("theta1", newTheta[1]);
             vertx.eventBus().send("slave", i);
         }
-        // start parallel gradient descent
-        // following actions of master-verticle are in the message handler
-        // waiting for messages from slave-verticles
+        // Start parallel gradient descent
+        // Following actions of master-verticle are in the message handler
+        // Waiting for messages from all slave-verticles
     }
     
     /*
-    * calculate gradient
-    * return gradients for theta0 and theta1
-    * master-verticle computes this
+    * Calculate gradient
+    * Returns gradients for theta0 and theta1
+    * Master-verticle computes this
     */
     private double[] calculateGradient(double[] theta) 
             throws NullPointerException, IllegalArgumentException {
@@ -278,41 +298,55 @@ public class Master extends AbstractVerticle {
     }
     
     /*
-    * calculates points for input data size
-    * uses random to change real values
+    * Calculates points for input data size
+    * Uses random to change real values
     */
-    private void calculatePoints(int count) {
-        // check if size is incorrect
+    public static int calculatePoints(SharedData sharedData,
+            int count, boolean parallel, int countOfSlaveVerticles) 
+            throws NullPointerException {
+        // check if size is incorrect or sharedData is null
+        if (sharedData == null)
+            throw new NullPointerException();
         if (count < 1)
-            return;
+            return -1;
         Random random = new Random();
+        /* If algorithm will be parallel it will create shared map for all
+        * slave-verticles, otherwise just one shared map
+        */
         if (parallel == false) {
+            LocalMap<String, Object> sharedMap =
+                    sharedData.getLocalMap("sharedMap");
             sharedMap.put("count", count);
             for (int i = 0; i < count; i++) {
-                double x = random.nextDouble()*5000;
-                // calculate y(x) and change it to not ideal value of function
-                double y = BasicFunction.calculate(x) + 100*(random.nextDouble() - 0.5);
+                double x = random.nextDouble()*5000.0;
+                // Calculate y(x) and change it to not ideal value of function
+                double y = BasicFunction.calculate(x) + 100.0*(random.nextDouble() - 0.5);
                 sharedMap.put("x" + i, x);
                 sharedMap.put("y" + i, y);
             }
+            return 0;
         }
         else {
+            if (countOfSlaveVerticles < 1 || countOfSlaveVerticles > 128)
+                return -1;
             for (int i = 0; i < countOfSlaveVerticles; i++) {
                 LocalMap<String, Object> map =
-                    vertx.sharedData().getLocalMap("sharedMap" + i);
+                    sharedData.getLocalMap("sharedMap" + i);
                 int slavePointCount = count / countOfSlaveVerticles;
                 map.put("count", slavePointCount);
                 for (int j = 0; j < slavePointCount; j++) {
-                    double x = random.nextDouble()*5000;
-                    // calculate y(x) and change it to not ideal value of function
-                    double y = BasicFunction.calculate(x) + 100*(random.nextDouble() - 0.5);
+                    double x = random.nextDouble()*5000.0;
+                    // Calculate y(x) and change it to not ideal value of function
+                    double y = BasicFunction.calculate(x) + 100.0*(random.nextDouble() - 0.5);
                     map.put("x" + j, x);
                     map.put("y" + j, y);
                 }
             }
+            return 0;
         }
     }
     
+    // Notice user when finished
     @Override
     public void stop() throws Exception {
         log.info("Master stopped!");

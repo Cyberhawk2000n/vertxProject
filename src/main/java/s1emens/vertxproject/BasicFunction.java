@@ -16,7 +16,7 @@ public class BasicFunction {
     * ideal function y = 150 + 0,18 * x
     */
     public static double calculate(double x) {
-        return 150 + 0.18 * x;
+        return 150.0 + 0.18 * x;
     }
     
     /*
