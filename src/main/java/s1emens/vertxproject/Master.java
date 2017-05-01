@@ -13,6 +13,7 @@ import io.vertx.core.shareddata.LocalMap;
 import io.vertx.core.shareddata.SharedData;
 import java.time.LocalTime;
 import java.time.temporal.ChronoUnit;
+import java.util.List;
 import java.util.Random;
 
 /**
@@ -23,7 +24,6 @@ import java.util.Random;
 public class Master extends AbstractVerticle {
     private final Logger log = LoggerFactory.getLogger(Master.class);
     private static final int NUM_OF_POINTS = 1000000;
-    private static final boolean PARALLEL = true;
     private static final double ACCURACY = 1e-4; // required accuracy to stop
     // example value for comparison function results
     private static final double X_EXAMPLE = 1000;
@@ -31,7 +31,8 @@ public class Master extends AbstractVerticle {
     private static final double ASSUMED_THETA1 = -50; // real value is 0,18
     private static final double ALFA_0 = 1e-2; // step of algorithm for theta0
     private static final double ALFA_1 = 1e-6; // step of algorithm for theta1
-    private static LocalMap<String, Object> sharedMap;
+    private boolean parallel;
+    private LocalMap<String, Object> sharedMap;
     private int receivedResponces;
     private LocalTime start;
     private LocalTime finish;
@@ -39,21 +40,52 @@ public class Master extends AbstractVerticle {
     private double[] newTheta;
     private double[] gradient;
     private int countOfSlaveVerticles;
+
+    public Master() {
+        this.countOfSlaveVerticles = -1;
+    }
+
+    public Master(int countOfSlaveVerticles) {
+        this.countOfSlaveVerticles = countOfSlaveVerticles;
+    }
     
     @Override
     public void start() throws Exception {
         SharedData sharedData = vertx.sharedData();
-        
-        if (PARALLEL == false)
+        if (countOfSlaveVerticles == -1) {
+            List<String> args = this.processArgs();
+            if (args != null && !args.isEmpty()) {
+                int position = -1;
+                for (int i = 0; i < (args.size() - 1); i++) {
+                    if ("-c".equals(args.get(i)))
+                        position = i + 1;
+                }
+                if (position != -1) {
+                    try {
+                        countOfSlaveVerticles =
+                                Integer.valueOf(
+                                args.get(position));
+                    }
+                    catch (NumberFormatException ex) {
+                        log.info("Invalid count of slave-verticles " +
+                                "(must be from 1 to 128): " + ex.toString());
+                    }
+                    catch (Exception ex) {}
+                }
+            }
+        }
+        if (countOfSlaveVerticles < 1 || countOfSlaveVerticles > 128)
+            parallel = false;
+        else
+            parallel = true;
+        if (parallel == false)
             sharedMap = sharedData.getLocalMap("sharedMap");
         else {
             // count of slave-verticles (depends on count of points)
-            countOfSlaveVerticles = 4;
             for (int i = 0; i < countOfSlaveVerticles; i++) {
                 sharedData.getLocalMap("sharedMap" + i);
                 vertx.deployVerticle(new Slave());
             }
-            
             //message handler for distributed computing
             vertx.eventBus().consumer("master", message -> {
                 double haveAccuracy; //it is used to compare results of function
@@ -115,7 +147,7 @@ public class Master extends AbstractVerticle {
             calculatePoints(NUM_OF_POINTS);
             // check used time for computation
             start = LocalTime.now();
-            if (PARALLEL)
+            if (parallel == true)
                 parallelGradientDescent();
             else
             {
@@ -254,7 +286,7 @@ public class Master extends AbstractVerticle {
         if (count < 1)
             return;
         Random random = new Random();
-        if (PARALLEL == false) {
+        if (parallel == false) {
             sharedMap.put("count", count);
             for (int i = 0; i < count; i++) {
                 double x = random.nextDouble()*5000;
